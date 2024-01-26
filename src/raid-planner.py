@@ -36,7 +36,6 @@ raid_posts = db.raid_posts
 
 def main():
     print("Running raid-planner script...")
-    print(f"did config load?{TEST_CHANNEL_ID}")
 
     should_post, next_reset_start = determine_if_should_post()
 
