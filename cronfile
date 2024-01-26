@@ -1,0 +1,2 @@
+* * * * * root /usr/local/bin/python3 /app/raid-planner.py >> /var/log/cron.log 2>&1
+
