@@ -37,37 +37,32 @@ raid_posts = db.raid_posts
 def main():
     print("Running raid-planner script...")
 
-    should_post, next_reset_start = determine_if_should_post()
+    should_post, next_reset_start, num_raids = determine_if_should_post()
 
-    if not should_post or next_reset_start is None:
+    if not should_post or next_reset_start is None or num_raids == 0:
         return
 
-    request_headers = create_request_headers()
-    for i in range(0, 3):
-        response = send_create_event_request(i, next_reset_start, request_headers)
-        print(f"{response.status_code:}")
-        if response.status_code != 200:
-            print("Request did not finish with status code 200")
-            break
-
-    insert_raid_post(3)
+    if num_raids == 2:
+        handle_2_raid_reset(next_reset_start)
+    elif num_raids == 3:
+        handle_3_raid_reset(next_reset_start)
 
 
-
-def determine_if_should_post() -> tuple[bool, Optional[datetime]]:
+def determine_if_should_post() -> tuple[bool, Optional[datetime], Optional[int]]:
     today_datetime = datetime.utcnow()
 
     most_recent_post = raid_posts.find().sort({"resetId":-1}).limit(1)
     if not most_recent_post.alive:
         print("No recent posts. Please initialize with at least 1 post.")
-        return (False, None)
+        return (False, None, None)
 
     next_reset_id = most_recent_post[0]["resetId"] + 1
+    num_raids = most_recent_post[0].get("numberOfDaysRaiding", 0)
 
     next_reset = raid_resets.find({"resetId": next_reset_id})
     if not next_reset.alive:
         print("No future resets found")
-        return (False, None)
+        return (False, None, None)
 
     next_reset_start = next_reset[0]["resetStart"]
     twelve_hour_before_reset = next_reset_start - timedelta(hours=24)
@@ -75,11 +70,80 @@ def determine_if_should_post() -> tuple[bool, Optional[datetime]]:
     if today_datetime > twelve_hour_before_reset:
         print(f"It is less than 12hrs until the reset")
         print(f"Signups should be posted")
-        return (True, next_reset_start)
+        return (True, next_reset_start, num_raids)
     else:
         print(f"It is more than 12hrs until the reset")
         print(f"Signups should not be posted")
-        return (False, None)
+        return (False, None, num_raids)
+
+def handle_2_raid_reset(next_reset_start: datetime):
+    request_headers = create_request_headers()
+    days_to_post = determine_2_days_to_post(next_reset_start)
+
+    num_signups_posted = 0
+    for day in days_to_post:
+        response = send_create_event_request(day, next_reset_start, request_headers)
+        print(f"{response.status_code:}")
+        if response.status_code != 200:
+            print("Request did not finish with status code 200")
+            break
+        num_signups_posted += 1
+
+    insert_raid_post(num_signups_posted)
+
+def handle_3_raid_reset(next_reset_start: datetime):
+    request_headers = create_request_headers()
+
+    num_signups_posted = 0
+    for i in range(0, 3):
+        response = send_create_event_request(i, next_reset_start, request_headers)
+        print(f"{response.status_code:}")
+        if response.status_code != 200:
+            print("Request did not finish with status code 200")
+            break
+        num_signups_posted += 1
+
+    insert_raid_post(num_signups_posted)
+
+def determine_2_days_to_post(next_reset_start: datetime) -> list:
+    datetimes_in_reset = [
+        {
+            'date': next_reset_start,
+            'position_in_reset': 0
+        },
+        {
+            'date': next_reset_start + timedelta(days=1),
+            'position_in_reset': 1
+        },
+        {
+            'date': next_reset_start + timedelta(days=2),
+            'position_in_reset': 2
+        }
+    ]
+    days_to_post = []
+
+    # If Wednesday or Saturday are in the reset, we want 1 raid on those days
+    specific_day_pos = list(filter(
+        lambda x: x['date'].weekday in [2, 5],
+        datetimes_in_reset
+    ))
+    if len(specific_day_pos) == 1:
+        days_to_post.append(specific_day_pos[0]['position_in_reset'])
+
+    # if reset starts on Wednesday, we want 1 raid on Friday
+    if datetimes_in_reset[0]['date'].weekday == 2:
+        days_to_post.append(datetimes_in_reset[2]['position_in_reset'])
+
+    for reset_day in datetimes_in_reset:
+        if len(days_to_post) >= 2:
+            break
+        current_pos = reset_day['position_in_reset']
+        if current_pos not in days_to_post:
+            days_to_post.append(current_pos)
+
+    days_to_post.sort()
+    return days_to_post
+
 
 def insert_raid_post(num_posts: int):
     most_recent_post = raid_posts.find().sort({"resetId":-1}).limit(1)[0]
@@ -123,12 +187,7 @@ def determine_channel(input_datetime: datetime) -> str:
 
 
 def create_event_json(day_number: int, start_date: datetime) -> dict:
-    time = ''
-
-    if start_date.weekday() in [4, 5, 6]:
-        time = "8:30 PM"
-    else:
-        time = "7:00 PM"
+    time = "7:00 PM"
 
     return {
         "leaderId": str(MAELLIC_USER_ID),

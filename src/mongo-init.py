@@ -4,38 +4,42 @@ from datetime import datetime, timedelta
 client = MongoClient()
 db = client.raid_planner_db
 raid_resets = db.raid_resets
-raid_resets.drop()
 raid_posts = db.raid_posts
-raid_posts.drop()
 
 DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S%z"
-RESET_START_STRING = "2024-01-23 16:00:00+00:00"
-RESET_END_STRING = "2024-01-26 15:59:59+00:00"
-BFD_END_DATE_STRING = "2024-02-08 16:00:00+00:00"
+RESET_START_STRING = "2024-03-05 16:00:00+00:00"
+RESET_END_STRING = "2024-03-08 15:59:59+00:00"
+GNOMEREGAN_END_DATE_STRING = "2024-05-01 16:00:00+00:00"
+RAID_NAME = "Gnomeregan"
 
 
 reset_start = datetime.strptime(RESET_START_STRING, DATETIME_FORMAT)
 reset_end = datetime.strptime(RESET_END_STRING, DATETIME_FORMAT)
+
+# already have raid posts, so don't need to initialize
+'''
 reset_id = 1
-
-
 init_raid_post = {
-    "raid": "BFD",
+    "raid": RAID_NAME,
     "resetId": reset_id,
-    "num_posts": 3,
+    "num_posts": 2,
     "resetStart": reset_start,
     "resetEnd": reset_end,
     "postDateTime": datetime.utcnow()
 }
 raid_posts.insert_one(init_raid_post)
+'''
 
-bfd_end_date = datetime.strptime(BFD_END_DATE_STRING, DATETIME_FORMAT)
-while reset_end < bfd_end_date:
+most_recent_post = raid_posts.find().sort({"resetId":-1}).limit(1)
+reset_id = most_recent_post[0]["resetId"] + 1
+gnomeregan_end_date = datetime.strptime(GNOMEREGAN_END_DATE_STRING, DATETIME_FORMAT)
+while reset_end < gnomeregan_end_date:
     reset_obj = {
-        "raid": "BFD",
+        "raid": RAID_NAME,
         "resetId": reset_id,
         "resetStart": reset_start,
-        "resetEnd": reset_end
+        "resetEnd": reset_end,
+        "numberOfDaysRaiding": 2
     }
     post_id = raid_resets.insert_one(reset_obj).inserted_id
     print(f"{post_id:}")
@@ -44,7 +48,7 @@ while reset_end < bfd_end_date:
     reset_id += 1
 
 
-for reset in raid_resets.find({}):
-    print(f"{reset:}")
+#for reset in raid_resets.find({}):
+#    print(f"{reset:}")
 
 
