@@ -30,8 +30,11 @@ init_raid_post = {
 raid_posts.insert_one(init_raid_post)
 '''
 
-most_recent_post = raid_posts.find().sort({"resetId":-1}).limit(1)
-reset_id = most_recent_post[0]["resetId"] + 1
+most_recent_reset = raid_resets.find().sort({"resetId":-1}).limit(1)[0]
+reset_id = 1
+if len(list(most_recent_reset)) > 0:
+    print(f'{most_recent_reset=}')
+    reset_id = most_recent_reset["resetId"] + 1
 gnomeregan_end_date = datetime.strptime(GNOMEREGAN_END_DATE_STRING, DATETIME_FORMAT)
 while reset_end < gnomeregan_end_date:
     reset_obj = {
